@@ -41,7 +41,7 @@ func main() {
 		c.HTML(http.StatusOK, "index.html", gin.H{})
 	})
 
-	// 📤 Загрузка одного файла
+	// Загрузка одного файла
 	r.POST("/upload", func(c *gin.Context) {
 		// Ограничение размера файла (10 MB)
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 10<<20)
@@ -80,7 +80,7 @@ func main() {
 		})
 	})
 
-	// 📤 Загрузка нескольких файлов
+	// Загрузка нескольких файлов
 	r.POST("/upload/multiple", func(c *gin.Context) {
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 50<<20) // 50 MB для нескольких файлов
 
@@ -124,7 +124,7 @@ func main() {
 		})
 	})
 
-	// 📥 Скачивание файла
+	// Скачивание файла
 	r.GET("/download/:filename", func(c *gin.Context) {
 		filename := c.Param("filename")
 		filepath := filepath.Join(uploadDir, filename)
@@ -143,7 +143,7 @@ func main() {
 		c.File(filepath)
 	})
 
-	// 📥 Стриминг файла (без скачивания)
+	// Стриминг файла (без скачивания)
 	r.GET("/files/:filename", func(c *gin.Context) {
 		filename := c.Param("filename")
 		filepath1 := filepath.Join(uploadDir, filename)
@@ -164,7 +164,7 @@ func main() {
 		c.File(filepath1)
 	})
 
-	// 📋 Получение списка файлов
+	//  Получение списка файлов
 	r.GET("/files", func(c *gin.Context) {
 		files, err := os.ReadDir(uploadDir)
 		if err != nil {
@@ -193,7 +193,7 @@ func main() {
 		})
 	})
 
-	// 🗑️ Удаление файла
+	// Удаление файла
 	r.DELETE("/files/:filename", func(c *gin.Context) {
 		filename := c.Param("filename")
 		filepath := filepath.Join(uploadDir, filename)
