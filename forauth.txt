@@ -1,0 +1,19 @@
+// middleware/auth.go
+func AuthMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        token := c.GetHeader("Authorization")
+        if token != "Bearer secret-token" {
+            c.AbortWithStatusJSON(401, gin.H{"error": "Unauthorized"})
+            return
+        }
+        c.Next()
+    }
+}
+
+// Защищённые роуты
+auth := r.Group("/")
+auth.Use(AuthMiddleware())
+{
+    auth.POST("/upload", uploadHandler)
+    auth.DELETE("/files/:filename", deleteHandler)
+}

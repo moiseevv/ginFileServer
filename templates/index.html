@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Файловый сервер на Gin</title>
+    <link rel="stylesheet" href="./asserts/styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>📁 Файловый сервер на Gin</h1>
+            
+            <div class="status" id="serverStatus">
+                Загрузка информации о сервере...
+            </div>
+            
+            <!-- Форма загрузки -->
+            <div id="uploadSection">
+                <h2>Загрузка файлов</h2>
+                
+                <div class="alert" id="uploadAlert"></div>
+                
+                <div class="upload-area" id="dropArea">
+                    <p>📤 Перетащите файлы сюда или</p>
+                    <input type="file" id="fileInput" multiple style="display: none;">
+                    <button class="btn" onclick="document.getElementById('fileInput').click()">
+                        Выбрать файлы
+                    </button>
+                    <p style="margin-top: 10px; color: #718096; font-size: 14px;">
+                        Максимальный размер файла: 10MB
+                    </p>
+                </div>
+                
+                <div class="progress" id="progressBar">
+                    <div class="progress-bar" id="progressFill"></div>
+                </div>
+                
+                <div style="text-align: center; margin-top: 20px;">
+                    <button class="btn" onclick="uploadFile()" id="uploadBtn">
+                        Загрузить файл(ы)
+                    </button>
+                    <button class="btn btn-secondary" onclick="refreshFileList()">
+                        Обновить список
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Список файлов -->
+            <div class="file-list" id="fileListSection">
+                <h2>Загруженные файлы</h2>
+                <div id="fileList">
+                    Загрузка списка файлов...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedFiles = [];
+        
+        // Drag & Drop
+        const dropArea = document.getElementById('dropArea');
+        const fileInput = document.getElementById('fileInput');
+        
+        dropArea.addEventListener('click', () => fileInput.click());
+        
+        fileInput.addEventListener('change', function(e) {
+            selectedFiles = Array.from(e.target.files);
+            showSelectedFiles();
+        });
+        
+        // Drag events
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+        });
+        
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => {
+                dropArea.classList.add('dragover');
+            }, false);
+        });
+        
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => {
+                dropArea.classList.remove('dragover');
+            }, false);
+        });
+        
+        dropArea.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            selectedFiles = Array.from(dt.files);
+            showSelectedFiles();
+        });
+        
+        function showSelectedFiles() {
+            if (selectedFiles.length === 0) return;
+            
+            let message = `Выбрано файлов: ${selectedFiles.length}<br>`;
+            selectedFiles.forEach(file => {
+                message += `• ${file.name} (${formatBytes(file.size)})<br>`;
+            });
+            
+            showAlert(message, 'success');
+        }
+        
+        // Загрузка файлов
+        async function uploadFile() {
+            if (selectedFiles.length === 0) {
+                showAlert('Пожалуйста, выберите файлы для загрузки', 'error');
+                return;
+            }
+            
+            const uploadBtn = document.getElementById('uploadBtn');
+            const progressBar = document.getElementById('progressBar');
+            const progressFill = document.getElementById('progressFill');
+            
+            uploadBtn.disabled = true;
+            progressBar.style.display = 'block';
+            
+            const formData = new FormData();
+            
+            // Проверка размера файлов
+            let totalSize = 0;
+            for (const file of selectedFiles) {
+                if (file.size > 10 * 1024 * 1024) {
+                    showAlert(`Файл ${file.name} превышает 10MB`, 'error');
+                    uploadBtn.disabled = false;
+                    progressBar.style.display = 'none';
+                    return;
+                }
+                totalSize += file.size;
+            }
+            
+            if (totalSize > 50 * 1024 * 1024) {
+                showAlert('Общий размер файлов превышает 50MB', 'error');
+                uploadBtn.disabled = false;
+                progressBar.style.display = 'none';
+                return;
+            }
+            
+            selectedFiles.forEach(file => {
+                formData.append('files', file);
+            });
+            
+            try {
+                const response = await fetch('/upload/multiple', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showAlert(`Успешно загружено ${result.files?.length || 0} файлов`, 'success');
+                    selectedFiles = [];
+                    fileInput.value = '';
+                    refreshFileList();
+                    refreshStatus();
+                } else {
+                    showAlert(result.error || 'Ошибка загрузки', 'error');
+                }
+            } catch (error) {
+                showAlert('Ошибка сети', 'error');
+            } finally {
+                uploadBtn.disabled = false;
+                progressBar.style.display = 'none';
+                progressFill.style.width = '0%';
+            }
+        }
+        
+        // Получение списка файлов
+        async function refreshFileList() {
+            try {
+                const response = await fetch('/files');
+                const result = await response.json();
+                
+                if (response.ok) {
+                    renderFileList(result.files);
+                }
+            } catch (error) {
+                document.getElementById('fileList').innerHTML = 
+                    '<div class="alert alert-error">Ошибка загрузки списка файлов</div>';
+            }
+        }
+        
+        function renderFileList(files) {
+            if (!files || files.length === 0) {
+                document.getElementById('fileList').innerHTML = 
+                    '<div class="file-item">Нет загруженных файлов</div>';
+                return;
+            }
+            
+            let html = '';
+            files.forEach(file => {
+                if (!file.isDir) {
+                    html += `
+                        <div class="file-item">
+                            <div class="file-info">
+                                <div class="file-name">${file.name}</div>
+                                <div class="file-size">
+                                    ${formatBytes(file.size)} • 
+                                    ${new Date(file.modTime).toLocaleString()}
+                                </div>
+                            </div>
+                            <div class="file-actions">
+                                <button class="btn" onclick="downloadFile('${file.name}')">
+                                    📥 Скачать
+                                </button>
+                                <button class="btn btn-secondary" onclick="viewFile('${file.name}')">
+                                    👁️ Просмотр
+                                </button>
+                                <button class="btn btn-danger" onclick="deleteFile('${file.name}')">
+                                    🗑️ Удалить
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+            
+            document.getElementById('fileList').innerHTML = html;
+        }
+        
+        // Действия с файлами
+        function downloadFile(filename) {
+            window.open(`/download/${encodeURIComponent(filename)}`, '_blank');
+        }
+        
+        function viewFile(filename) {
+            window.open(`/files/${encodeURIComponent(filename)}`, '_blank');
+        }
+        
+        async function deleteFile(filename) {
+            if (!confirm(`Удалить файл "${filename}"?`)) return;
+            
+            try {
+                const response = await fetch(`/files/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    showAlert(`Файл "${filename}" удален`, 'success');
+                    refreshFileList();
+                    refreshStatus();
+                } else {
+                    const result = await response.json();
+                    showAlert(result.error || 'Ошибка удаления', 'error');
+                }
+            } catch (error) {
+                showAlert('Ошибка сети', 'error');
+            }
+        }
+        
+        // Получение статуса сервера
+        async function refreshStatus() {
+            try {
+                const response = await fetch('/status');
+                const result = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('serverStatus').innerHTML = `
+                        <strong>Статус сервера:</strong><br>
+                        • Файлов: ${result.filesCount}<br>
+                        • Общий размер: ${formatBytes(result.totalSize)}<br>
+                        • Директория: ${result.uploadDir}<br>
+                        • Время сервера: ${new Date(result.serverTime).toLocaleString()}
+                    `;
+                }
+            } catch (error) {
+                document.getElementById('serverStatus').innerHTML = 
+                    'Ошибка получения статуса сервера';
+            }
+        }
+        
+        // Вспомогательные функции
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        function showAlert(message, type = 'info') {
+            const alertDiv = document.getElementById('uploadAlert');
+            alertDiv.innerHTML = message;
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.style.display = 'block';
+            
+            setTimeout(() => {
+                alertDiv.style.display = 'none';
+            }, 5000);
+        }
+        
+        // Инициализация
+        document.addEventListener('DOMContentLoaded', () => {
+            refreshStatus();
+            refreshFileList();
+            
+            // Автообновление каждые 30 секунд
+            setInterval(() => {
+                refreshFileList();
+                refreshStatus();
+            }, 30000);
+        });
+    </script>
+</body>
+</html>
